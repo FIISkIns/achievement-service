@@ -1,22 +1,16 @@
 package main
 
 import (
-	"database/sql"
 	"encoding/json"
 	"github.com/dimfeld/httptreemux"
+	"gopkg.in/yaml.v2"
 	"io/ioutil"
 	"log"
 	"net/http"
-	"strconv"
-	"sort"
-	"fmt"
-	"path/filepath"
 	"path"
-	"gopkg.in/yaml.v2"
-	"net/url"
+	"path/filepath"
+	"strconv"
 )
-
-var database *sql.DB
 
 type ProgressItem struct {
 	CourseId string `json:"courseId"`
@@ -54,62 +48,28 @@ type CourseInfo struct {
 	CourseUrl  string `json:"courseUrl"`
 }
 
-func getStats(userId string) (*StatsItem, error) {
-	resp, err := http.Get(config.StatsServiceUrl + "/" + userId)
+func getJsonData(w http.ResponseWriter, url string, response interface{}) bool {
+	failureResponse := "Failed communication with " + url + "\n"
+	resp, err := http.Get(url)
 	if err != nil {
-		return nil, err
+		http.Error(w, failureResponse+err.Error(), http.StatusInternalServerError)
+		return false
 	}
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		return nil, err
+		http.Error(w, failureResponse+"Error reading response: "+err.Error(), http.StatusInternalServerError)
+		return false
 	}
-	var statsItem StatsItem
-	err = json.Unmarshal(body, &statsItem)
-	return &statsItem, err
-}
-
-func getProgress(userId string) ([]ProgressItem, error) {
-	resp, err := http.Get(config.CourseProgressServiceUrl + "/" + userId)
+	if resp.StatusCode != http.StatusOK {
+		http.Error(w, failureResponse+"Response: "+string(body), http.StatusInternalServerError)
+		return false
+	}
+	err = json.Unmarshal(body, &response)
 	if err != nil {
-		return nil, err
+		http.Error(w, "Failed to unmarshal data from "+url+": "+err.Error(), http.StatusInternalServerError)
+		return false
 	}
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-	var progressItems []ProgressItem
-	err = json.Unmarshal(body, &progressItems)
-	sort.Slice(progressItems, func(i, j int) bool { return progressItems[i].CourseId < progressItems[j].CourseId })
-	return progressItems, err
-}
-
-func getCoursesInfo() ([]CourseInfo, error) {
-	resp, err := http.Get(config.CourseManagerServiceUrl + "/courses")
-	if err != nil {
-		return nil, err
-	}
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-	var coursesInfo []CourseInfo
-	err = json.Unmarshal(body, &coursesInfo)
-	sort.Slice(coursesInfo, func(i, j int) bool { return coursesInfo[i].CourseId < coursesInfo[j].CourseId })
-	return coursesInfo, err
-}
-
-func getAchievementsInfo(courseInfo CourseInfo) ([]AchievementInfo, error) {
-	resp, err := http.Get(courseInfo.CourseUrl + "/achievements")
-	if err != nil {
-		return nil, err
-	}
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-	var achievementsInfo []AchievementInfo
-	err = json.Unmarshal(body, &achievementsInfo)
-	return achievementsInfo, err
+	return true
 }
 
 func getProgressOnCourse(courseId string, progress []ProgressItem) (int, int, int) {
@@ -142,22 +102,22 @@ func getProgressOnCourse(courseId string, progress []ProgressItem) (int, int, in
 
 func getAchievementHandler(w http.ResponseWriter, _ *http.Request, params map[string]string) {
 	userId := params["user"]
-	statsItem, err := getStats(userId)
-	if err != nil {
-		//handle error
-		fmt.Println("stats", err.Error())
+	var statsItem StatsItem
+	success := getJsonData(w, config.StatsServiceUrl+"/"+userId, &statsItem)
+	if !success {
+		return
 	}
 
-	progressItems, err := getProgress(userId)
-	if err != nil {
-		//handle error
-		fmt.Println("progress", err.Error())
+	var progressItems []ProgressItem
+	success = getJsonData(w, config.CourseProgressServiceUrl+"/"+userId, &progressItems)
+	if !success {
+		return
 	}
 
-	coursesInfo, err := getCoursesInfo()
-	if err != nil {
-		//handle error
-		fmt.Println("courses", err.Error())
+	var coursesInfo []CourseInfo
+	success = getJsonData(w, config.CourseManagerServiceUrl+"/courses", &coursesInfo)
+	if !success {
+		return
 	}
 
 	achievements := make([]Achievement, 0)
@@ -165,16 +125,18 @@ func getAchievementHandler(w http.ResponseWriter, _ *http.Request, params map[st
 
 	var totalTasksCompleted int
 	for _, courseInfo := range coursesInfo {
-		achievementsInfo, err := getAchievementsInfo(courseInfo)
-		if err != nil {
-			log.Fatal(err)
+		var achievementsInfo []AchievementInfo
+		success = getJsonData(w, courseInfo.CourseUrl+"/achievements", &achievementsInfo)
+		if !success {
+			return
 		}
+
 		firstTaskCompletion, secondTaskCompletion, tasksCompleted := getProgressOnCourse(courseInfo.CourseId, progressItems)
 		totalTasksCompleted += tasksCompleted
 		for _, achievementInfo := range achievementsInfo {
 			achievement.Title = achievementInfo.Title
 			achievement.Description = achievementInfo.Description
-			achievement.Icon = courseInfo.CourseUrl + "/static/" + achievementInfo.Icon
+			achievement.Icon = config.Adress + ":" + strconv.Itoa(config.Port) + "/static/" + courseInfo.CourseId + "/" + achievementInfo.Icon
 			if achievementInfo.Type == "starter" {
 				achievement.Completion = firstTaskCompletion
 			} else if achievementInfo.Type == "completion" {
@@ -268,37 +230,36 @@ func loadAchievementsInfo() {
 
 }
 
-func redirect(w http.ResponseWriter, r *http.Request, newPath string, statusCode int) {
-	newURL := url.URL{
-		Path:     newPath,
-	}
-	http.Redirect(w, r, newURL.String(), statusCode)
-}
-
 func redirectHandler(w http.ResponseWriter, r *http.Request, params map[string]string) {
-	coursesInfo, err := getCoursesInfo()
-	if err != nil {
-		//handle error
-		fmt.Println("courses", err.Error())
+	var coursesInfo []CourseInfo
+	success := getJsonData(w, config.CourseManagerServiceUrl+"/courses", &coursesInfo)
+	if !success {
+		return
 	}
-	var newPath string
-	for _, courseInfo := range coursesInfo{
+	var courseFound bool
+	var newURL string
+	for _, courseInfo := range coursesInfo {
 		if courseInfo.CourseId == params["course"] {
-			newPath = courseInfo.CourseUrl + "/static/" + params["filepath"]
+			newURL = courseInfo.CourseUrl + "/static/" + params["filepath"]
+			courseFound = true
 			break
 		}
-
 	}
-	redirect(w, r, newPath, http.StatusOK)
+	if courseFound {
+		http.Redirect(w, r, newURL, http.StatusPermanentRedirect)
+	} else {
+		http.Error(w, "Specified course not found", http.StatusNotFound)
+	}
+
 }
 
 func main() {
 	initConfig()
 	loadAchievementsInfo()
 	router := httptreemux.New()
-	router.GET("/:user", getAchievementHandler)
+	router.GET("/achievements/:user", getAchievementHandler)
 	router.GET("/static/*filepath", getIconHandler)
-	router.GET("/static/:course/*filepath",redirectHandler)
+	router.GET("/static/:course/*filepath", redirectHandler)
 	err := http.ListenAndServe(":"+strconv.Itoa(config.Port), router)
 	if err != nil {
 		log.Fatal(err)
