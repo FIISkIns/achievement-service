@@ -120,10 +120,12 @@ func getAchievementHandler(w http.ResponseWriter, _ *http.Request, params map[st
 		return
 	}
 
-	achievements := make([]Achievement, 0)
-	var achievement Achievement
+	achievements := make([]Achievement, (len(coursesInfo)*2)+len(localAchievementsInfo))
 
+	var achievement Achievement
 	var totalTasksCompleted int
+
+	var index int
 	for _, courseInfo := range coursesInfo {
 		var achievementsInfo []AchievementInfo
 		success = getJsonData(w, courseInfo.CourseUrl+"/achievements", &achievementsInfo)
@@ -145,7 +147,8 @@ func getAchievementHandler(w http.ResponseWriter, _ *http.Request, params map[st
 				//Error
 				achievement.Completion = 0
 			}
-			achievements = append(achievements, achievement)
+			achievements[index] = achievement
+			index++
 		}
 	}
 
@@ -177,7 +180,8 @@ func getAchievementHandler(w http.ResponseWriter, _ *http.Request, params map[st
 		default:
 			achievement.Completion = 0
 		}
-		achievements = append(achievements, achievement)
+		achievements[index] = achievement
+		index++
 	}
 
 	jsonData, err := json.Marshal(achievements)
@@ -207,27 +211,11 @@ func loadYaml(filePath string, v interface{}) error {
 }
 
 func loadAchievementsInfo() {
-	type AchievementsInfoRaw struct {
-		AchievementInfo `yaml:",inline"`
-	}
-
-	var info []AchievementsInfoRaw
-	err := loadYaml("achievements.yml", &info)
+	err := loadYaml("achievements.yml", &localAchievementsInfo)
 	if err != nil {
 		log.Panicln("While loading course info", err)
 	}
-
-	var achievementInfo AchievementInfo
-	for _, achievement := range info {
-		achievementInfo.Title = achievement.Title
-		achievementInfo.Description = achievement.Description
-		achievementInfo.Icon = achievement.Icon
-		achievementInfo.Type = achievement.Type
-		localAchievementsInfo = append(localAchievementsInfo, achievementInfo)
-	}
-
 	log.Println("Achievements info loaded successfully.")
-
 }
 
 func redirectHandler(w http.ResponseWriter, r *http.Request, params map[string]string) {
