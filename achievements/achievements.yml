@@ -1,0 +1,16 @@
+- title: Member of the pack!
+  description: Get started with any course
+  icon: icon.png
+  type: start
+- title: Spread the word!
+  description: Share a course on facebook
+  icon: globe.png
+  type: share
+- title: Seriously commited!
+  description: Complete 10 tasks
+  icon: study.png
+  type: study
+- title: Learning marathon!
+  description: Get a streak of 10 days
+  icon: marathon.png
+  type: marathon
