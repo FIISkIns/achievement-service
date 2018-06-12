@@ -13,17 +13,17 @@ import (
 )
 
 type ProgressItem struct {
-	CourseId string `json:"courseId"`
-	TaskId   string `json:"taskId"`
-	Progress string `json:"progress"`
+	CourseId string
+	TaskId   string
+	Progress string
 }
 
 type StatsItem struct {
-	StartedCourses   int    `json:"startedCourses"`
-	CompletedCourses int    `json:"completedCourses"`
-	LastLoggedIn     string `json:"lastLoggedIn"`
-	TimeSpent        int    `json:"timeSpent"`
-	LongestStreak    int    `json:"longestStreak"`
+	StartedCourses   int
+	CompletedCourses int
+	LastLoggedIn     string
+	TimeSpent        int
+	LongestStreak    int
 }
 
 type Achievement struct {
@@ -43,9 +43,9 @@ type AchievementInfo struct {
 var localAchievementsInfo = make([]AchievementInfo, 0)
 
 type CourseInfo struct {
-	CourseId   string `json:"courseId"`
-	CourseName string `json:"courseName"`
-	CourseUrl  string `json:"courseUrl"`
+	Id   string
+	Name string
+	Url  string
 }
 
 func getJsonData(w http.ResponseWriter, url string, response interface{}) bool {
@@ -80,7 +80,7 @@ func getProgressOnCourse(courseId string, progress []ProgressItem) (int, int, in
 	var secondTaskCompletion int
 	for _, item := range progress {
 		if courseId == item.CourseId {
-			if item.Progress != "unresolved" {
+			if item.Progress != "not started" {
 				courseStarted = true
 			}
 			if item.Progress == "completed" {
@@ -128,17 +128,17 @@ func getAchievementHandler(w http.ResponseWriter, _ *http.Request, params map[st
 	var index int
 	for _, courseInfo := range coursesInfo {
 		var achievementsInfo []AchievementInfo
-		success = getJsonData(w, courseInfo.CourseUrl+"/achievements", &achievementsInfo)
+		success = getJsonData(w, courseInfo.Url+"/achievements", &achievementsInfo)
 		if !success {
 			return
 		}
 
-		firstTaskCompletion, secondTaskCompletion, tasksCompleted := getProgressOnCourse(courseInfo.CourseId, progressItems)
+		firstTaskCompletion, secondTaskCompletion, tasksCompleted := getProgressOnCourse(courseInfo.Id, progressItems)
 		totalTasksCompleted += tasksCompleted
 		for _, achievementInfo := range achievementsInfo {
 			achievement.Title = achievementInfo.Title
 			achievement.Description = achievementInfo.Description
-			achievement.Icon = config.Adress + ":" + strconv.Itoa(config.Port) + "/static/" + courseInfo.CourseId + "/" + achievementInfo.Icon
+			achievement.Icon = courseInfo.Id + "/" + achievementInfo.Icon
 			if achievementInfo.Type == "starter" {
 				achievement.Completion = firstTaskCompletion
 			} else if achievementInfo.Type == "completion" {
@@ -155,7 +155,7 @@ func getAchievementHandler(w http.ResponseWriter, _ *http.Request, params map[st
 	for _, achievementInfo := range localAchievementsInfo {
 		achievement.Title = achievementInfo.Title
 		achievement.Description = achievementInfo.Description
-		achievement.Icon = config.Adress + ":" + strconv.Itoa(config.Port) + "/static/" + achievementInfo.Icon
+		achievement.Icon = achievementInfo.Icon
 		switch achievementInfo.Type {
 		case "start":
 			if totalTasksCompleted != 0 {
@@ -227,8 +227,8 @@ func redirectHandler(w http.ResponseWriter, r *http.Request, params map[string]s
 	var courseFound bool
 	var newURL string
 	for _, courseInfo := range coursesInfo {
-		if courseInfo.CourseId == params["course"] {
-			newURL = courseInfo.CourseUrl + "/static/" + params["filepath"]
+		if courseInfo.Id == params["course"] {
+			newURL = courseInfo.Url + "/static/" + params["filepath"]
 			courseFound = true
 			break
 		}
