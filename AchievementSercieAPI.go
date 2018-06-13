@@ -111,7 +111,7 @@ func getProgressOnCourse(courseId string, progress []ProgressItem) (int, int, in
 func getAchievementHandler(w http.ResponseWriter, _ *http.Request, params map[string]string) {
 	userId := params["user"]
 	var statsItem StatsItem
-	success := getJsonData(w, config.StatsServiceUrl+"/"+userId, &statsItem)
+	success := getJsonData(w, config.StatsServiceUrl+"/stats/"+userId, &statsItem)
 	if !success {
 		return
 	}
