@@ -52,21 +52,29 @@ func getJsonData(w http.ResponseWriter, url string, response interface{}) bool {
 	failureResponse := "Failed communication with " + url + "\n"
 	resp, err := http.Get(url)
 	if err != nil {
-		http.Error(w, failureResponse+err.Error(), http.StatusInternalServerError)
+		errorMessage := failureResponse+err.Error()
+		log.Println(errorMessage)
+		http.Error(w, errorMessage, http.StatusInternalServerError)
 		return false
 	}
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		http.Error(w, failureResponse+"Error reading response: "+err.Error(), http.StatusInternalServerError)
+		errorMessage := failureResponse+"Error reading response: "+err.Error()
+		log.Println(errorMessage)
+		http.Error(w, errorMessage, http.StatusInternalServerError)
 		return false
 	}
 	if resp.StatusCode != http.StatusOK {
-		http.Error(w, failureResponse+"Response: "+string(body), http.StatusInternalServerError)
+		errorMessage := failureResponse+"Response: "+string(body)
+		log.Println(errorMessage)
+		http.Error(w, errorMessage, http.StatusInternalServerError)
 		return false
 	}
 	err = json.Unmarshal(body, &response)
 	if err != nil {
-		http.Error(w, "Failed to unmarshal data from "+url+": "+err.Error(), http.StatusInternalServerError)
+		errorMessage := "Failed to unmarshal data from "+url+": "+err.Error()
+		log.Println(errorMessage)
+		http.Error(w, errorMessage, http.StatusInternalServerError)
 		return false
 	}
 	return true
@@ -186,7 +194,9 @@ func getAchievementHandler(w http.ResponseWriter, _ *http.Request, params map[st
 
 	jsonData, err := json.Marshal(achievements)
 	if err != nil {
-		http.Error(w, "JSON error: failed to marshal stats", 500)
+		errorMessage := "JSON error (failed to marshal stats): "+err.Error()
+		log.Println(errorMessage)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -241,10 +251,47 @@ func redirectHandler(w http.ResponseWriter, r *http.Request, params map[string]s
 
 }
 
+func checkHealth(w http.ResponseWriter, url string) bool {
+	resp, err := http.Get(url)
+	if err != nil {
+		errorMessage := "Failed to communicate with: " + url + "\nCause: " + err.Error()
+		log.Println(errorMessage)
+		http.Error(w, errorMessage, http.StatusInternalServerError)
+		return false
+	}
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		errorMessage := "Failed to read response from: " + url + "\nCause: " + err.Error()
+		log.Println(errorMessage)
+		http.Error(w, errorMessage, http.StatusInternalServerError)
+		return false
+	}
+	if resp.StatusCode != http.StatusOK {
+		errorMessage := "Failed health check on: " + url + "\nResponse: " + string(body)
+		log.Println(errorMessage)
+		http.Error(w, errorMessage, http.StatusInternalServerError)
+		return false
+	}
+	return true
+}
+
+func healthCheckHandler(w http.ResponseWriter, _ *http.Request, _ map[string]string) {
+	if success := checkHealth(w, config.CourseProgressServiceUrl+"/health"); !success {
+		return
+	}
+	if success := checkHealth(w, config.CourseManagerServiceUrl+"/health"); !success {
+		return
+	}
+	if success := checkHealth(w, config.StatsServiceUrl+"/health"); !success {
+		return
+	}
+}
+
 func main() {
 	initConfig()
 	loadAchievementsInfo()
 	router := httptreemux.New()
+	router.GET("/health", healthCheckHandler)
 	router.GET("/achievements/:user", getAchievementHandler)
 	router.GET("/static/*filepath", getIconHandler)
 	router.GET("/static/:course/*filepath", redirectHandler)
