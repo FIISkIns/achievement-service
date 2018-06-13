@@ -117,7 +117,7 @@ func getAchievementHandler(w http.ResponseWriter, _ *http.Request, params map[st
 	}
 
 	var progressItems []ProgressItem
-	success = getJsonData(w, config.CourseProgressServiceUrl+"/"+userId, &progressItems)
+	success = getJsonData(w, config.CourseProgressServiceUrl+"/progress/"+userId, &progressItems)
 	if !success {
 		return
 	}
